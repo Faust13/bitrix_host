@@ -1,0 +1,163 @@
+---
+# tasks file for newhost
+
+- name: Update and upgrade apt packages
+  apt:
+    upgrade: yes
+    update_cache: yes
+    cache_valid_time: 86400
+
+- name: Set Postfix option hostname
+  debconf: 
+    name: postifx
+    question: "postfix/mailname" 
+    value: "{{ prjct_name }}" 
+    vtype: "string"
+  changed_when: False
+
+- name: Set Postfix option type as internet site
+  debconf: 
+    name: postfix 
+    question: "postfix/main_mailer_type" 
+    value: "'Internet Site'"
+    vtype: "string"
+  changed_when: False
+
+- name: Set MySQL root password before installing
+  debconf: 
+    name: 'mysql-server'
+    question: 'mysql-server/root_password'
+    value: '{{mysql_root_pass | quote}}'
+    vtype: 'password'
+  changed_when: False
+
+- name: Confirm MySQL root password before installing
+  debconf: 
+    name: 'mysql-server' 
+    question: 'mysql-server/root_password_again' 
+    value: '{{mysql_root_pass | quote}}' 
+    vtype: 'password'
+  changed_when: False
+
+- name: Install Postfix, Apache2, MySQL, nginx, pip and PHP
+  apt:
+    name: "{{ packages }}"
+    state: present
+  vars:
+    packages:
+        - postfix
+        - apache2
+        - libapache2-mpm-itk
+        - libapache2-mod-php7.2
+        - mysql-client
+        - mysql-server
+        - php
+        - php-curl
+        - php-gd
+        - php-xml
+        - php-mysql
+        - php-mbstring
+        - python-pip
+
+- name: Stop apache
+  service:
+    name: apache2
+    state: stopped
+
+- name: Install nginx
+  apt:
+    name: "nginx"
+    state: present
+
+- name: install PyMySql
+  pip:
+    name: PyMySQL
+
+- name: Create user "bitrix"
+  user:
+    name: bitrix
+    password: '{{ bitrix_passwd }}'
+    shell: /bin/bash
+
+- name: Create project folder
+  file:
+    path: "/home/bitrix/www/{{ prjct_name }}/public_html"
+    state: directory
+    owner: bitrix
+    group: bitrix
+
+- name: deploy bitrix to remote host
+  copy:
+    src: "bitrix/bitrixsetup.php"
+    dest: "/home/bitrix/www/{{ prjct_name }}/public_html/bitrixsetup.php"
+    owner: bitrix
+    group: bitrix
+
+- name: Generate host-config for apache
+  template:
+    src: "host.conf.j2"
+    dest: "/etc/apache2/sites-available/​{{ prjct_name }}.conf"
+    
+- name: create symbolic link to conf-file
+  file:
+    src: "/etc/apache2/sites-available/​{{ prjct_name }}.conf"
+    dest: "/etc/apache2/sites-enabled/{{ prjct_name }}.conf"
+    state: link
+  notify: restart apache
+
+- name: Copy config files for apache2
+  copy: "src={{ item }} dest=/etc/apache2/"
+  with_fileglob: apache2/*.conf
+  notify: restart apache
+
+
+- name: Copy config for php
+  copy: 
+    src: php/php.ini
+    dest: /etc/php/7.3/{{ item }}/php.ini
+  with_items:
+    - apache2
+    - cli
+  notify: 
+    - restart apache
+
+  
+- name: copy config file for nginx
+  copy: 
+    src: nginx/nginx.conf
+    dest: /etc/nginx/nginx.conf
+  notify: restart nginx
+      
+- name: generate conf file for host (ngnix)
+  template:
+    src: "nhost.conf.j2"
+    dest: "/etc/nginx/sites-available/{{ prjct_name }}"
+  notify: restart nginx
+
+- name: create symbolic link to conf-file
+  file:
+    src: "/etc/nginx/sites-available/{{ prjct_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ prjct_name }}"
+    state: link
+  notify: restart nginx
+
+- name: Create a new database
+  mysql_db:
+    name: "{{ db_name }}"
+    state: present
+    login_password: "{{ mysql_root_pass }}"
+  
+- name: Create database user
+  mysql_user:
+    name: "{{ db_name }}"
+    password: "{{ db_passwd }}"
+    priv: '{{ prjct_name }}.*:ALL'
+    state: present
+    login_password: "{{ mysql_root_pass }}"
+
+
+- name: Copy mysql config
+  copy:
+    src: mysql/mysqld.cnf
+    dest: /etc/mysql/mysql.conf.d/mysqld.cnf
+  notify: restart mysql

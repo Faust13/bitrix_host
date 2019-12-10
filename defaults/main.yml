@@ -1,0 +1,7 @@
+---
+# defaults file for newhost
+prjct_name: example.com
+db_name: example
+bitrix_passwd: password
+db_passwd: dbpass
+mysql_root_pass: test123

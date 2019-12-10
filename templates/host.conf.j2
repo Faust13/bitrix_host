@@ -1,0 +1,12 @@
+<VirtualHost *:8080>
+	
+	ServerName {{ prjct_name }}
+
+	ServerAdmin webmaster@localhost
+	DocumentRoot /home/bitrix/www/{{ prjct_name }}/public_html
+
+   	AssignUserId bitrix bitrix
+
+	ErrorLog ${APACHE_LOG_DIR}/{{ db_name }}_error.log
+	
+</VirtualHost>
